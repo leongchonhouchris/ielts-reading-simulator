@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IELTS Reading Practice – Test Selection</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Loading overlay -->
+  <div class="spinner-overlay" id="loading">
+    <div class="spinner"></div>
+    <div style="color:#555;font-size:0.95rem;">Loading tests…</div>
+  </div>
+
+  <!-- Top bar -->
+  <header class="index-header">
+    <div class="logo">IELTS <span>Reading Practice</span></div>
+    <a href="admin.html" class="btn btn-ghost btn-sm" style="color:#cce0ff;border-color:#7db8f7;">Admin</a>
+  </header>
+
+  <!-- Main content -->
+  <main class="index-body">
+    <h1>Available Practice Tests</h1>
+    <p class="subtitle">Select a test below to begin. You will have <strong>60 minutes</strong> once the test starts.</p>
+
+    <div class="test-grid" id="test-grid">
+      <!-- Cards injected by JS -->
+    </div>
+
+    <div class="empty-state hidden" id="empty-state">
+      <p>No tests available yet. Ask your teacher to add one via the Admin panel.</p>
+    </div>
+  </main>
+
+  <!-- ── Student entry modal (shown when a test card is clicked) ── -->
+  <div class="modal-overlay hidden" id="student-modal">
+    <div class="modal" style="max-width:400px;">
+      <h2>Before You Begin</h2>
+      <p>Please enter your details. Your results will be saved automatically when you submit.</p>
+      <div class="form-group">
+        <label for="student-name">Full Name</label>
+        <input type="text" id="student-name" class="text-input" style="max-width:100%;"
+               placeholder="e.g. Chan Siu Ming" autocomplete="name" />
+      </div>
+      <div class="form-group">
+        <label for="student-class">Class</label>
+        <select id="student-class" class="match-select" style="max-width:100%;margin-top:0;">
+          <option value="">— Select your class —</option>
+          <!-- Options injected by JS from config -->
+        </select>
+      </div>
+      <div id="student-error" class="hidden" style="color:var(--accent);font-size:0.85rem;margin-bottom:10px;">
+        Please fill in both your name and class before starting.
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="student-cancel">Cancel</button>
+        <button class="btn btn-primary" id="student-confirm">Confirm &amp; Begin</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase error banner -->
+  <div id="firebase-error" class="hidden" style="
+    position:fixed;bottom:0;left:0;right:0;background:#c8102e;color:#fff;
+    padding:14px 24px;font-size:0.9rem;text-align:center;z-index:9999;">
+    Firebase is not configured yet. Open <code>js/firebase-config.js</code> and paste your Firebase project credentials.
+  </div>
+
+  <script type="module">
+    import { getAllTests, getConfig, seedIfEmpty } from "./js/db.js";
+    import { SAMPLE_TEST } from "./js/sample-data.js";
+
+    const grid          = document.getElementById("test-grid");
+    const emptyState    = document.getElementById("empty-state");
+    const loading       = document.getElementById("loading");
+    const studentModal  = document.getElementById("student-modal");
+    const studentName   = document.getElementById("student-name");
+    const studentClass  = document.getElementById("student-class");
+    const studentError  = document.getElementById("student-error");
+    const studentCancel = document.getElementById("student-cancel");
+    const studentConfirm= document.getElementById("student-confirm");
+
+    let pendingTestId = null;
+
+    async function init() {
+      try {
+        await seedIfEmpty(SAMPLE_TEST);
+
+        // Load config to get class list
+        const cfg = await getConfig();
+        const classList = cfg.classList || ["S3C", "S5B"];
+        classList.forEach(cls => {
+          const opt = document.createElement("option");
+          opt.value = cls;
+          opt.textContent = cls;
+          studentClass.appendChild(opt);
+        });
+
+        const tests = await getAllTests();
+        loading.classList.add("hidden");
+
+        if (tests.length === 0) {
+          emptyState.classList.remove("hidden");
+          return;
+        }
+
+        tests.forEach(test => {
+          const qCount = (test.sections || []).reduce((s, sec) => s + (sec.questions || []).length, 0);
+          const card = document.createElement("div");
+          card.className = "test-card";
+          card.innerHTML = `
+            <h3>${escHtml(test.title || "Untitled Test")}</h3>
+            <div class="meta">Academic Reading &nbsp;|&nbsp; ${test.timeLimit || 60} min &nbsp;|&nbsp; ${qCount} questions</div>
+            <div class="meta">${(test.passages || []).length} passage${(test.passages || []).length !== 1 ? "s" : ""}</div>
+            <button class="btn btn-primary btn-sm start-btn">Start Test</button>
+          `;
+          card.querySelector(".start-btn").addEventListener("click", () => {
+            pendingTestId = test.id;
+            studentName.value = "";
+            studentClass.value = "";
+            studentError.classList.add("hidden");
+            studentModal.classList.remove("hidden");
+            studentName.focus();
+          });
+          grid.appendChild(card);
+        });
+
+      } catch (err) {
+        loading.classList.add("hidden");
+        console.error(err);
+        if (err.message && (err.message.includes("projectId") || err.message.includes("Firebase"))) {
+          document.getElementById("firebase-error").classList.remove("hidden");
+        } else {
+          emptyState.classList.remove("hidden");
+        }
+      }
+    }
+
+    // Cancel modal
+    studentCancel.addEventListener("click", () => {
+      studentModal.classList.add("hidden");
+      pendingTestId = null;
+    });
+
+    // Confirm → validate → go to test
+    studentConfirm.addEventListener("click", startTest);
+    studentName.addEventListener("keydown",  e => { if (e.key === "Enter") startTest(); });
+
+    function startTest() {
+      const name = studentName.value.trim();
+      const cls  = studentClass.value;
+      if (!name || !cls) {
+        studentError.classList.remove("hidden");
+        return;
+      }
+      studentError.classList.add("hidden");
+      sessionStorage.setItem("activeTestId",    pendingTestId);
+      sessionStorage.setItem("studentName",     name);
+      sessionStorage.setItem("studentClass",    cls);
+      window.location.href = "test.html";
+    }
+
+    function escHtml(str) {
+      return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    init();
+  </script>
+</body>
+</html>
