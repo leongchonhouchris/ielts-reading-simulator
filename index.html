@@ -85,10 +85,15 @@
     let pendingTestId = null;
 
     async function init() {
+      // ── Step 1: seed sample test (non-fatal if it fails) ────────
       try {
         await seedIfEmpty(SAMPLE_TEST);
+      } catch (seedErr) {
+        console.warn("Seed skipped:", seedErr.message);
+      }
 
-        // Load config to get class list
+      // ── Step 2: load class list for dropdown (non-fatal) ────────
+      try {
         const cfg = await getConfig();
         const classList = cfg.classList || ["S3C", "S5B"];
         classList.forEach(cls => {
@@ -97,7 +102,18 @@
           opt.textContent = cls;
           studentClass.appendChild(opt);
         });
+      } catch (cfgErr) {
+        console.warn("Could not load class list:", cfgErr.message);
+        // Fall back to default classes so the dropdown is never empty
+        ["S3C", "S5B"].forEach(cls => {
+          const opt = document.createElement("option");
+          opt.value = cls; opt.textContent = cls;
+          studentClass.appendChild(opt);
+        });
+      }
 
+      // ── Step 3: load and render test cards ──────────────────────
+      try {
         const tests = await getAllTests();
         loading.classList.add("hidden");
 
@@ -130,7 +146,7 @@
       } catch (err) {
         loading.classList.add("hidden");
         console.error(err);
-        if (err.message && (err.message.includes("projectId") || err.message.includes("Firebase"))) {
+        if (err.message && (err.message.includes("projectId") || err.message.includes("Firebase") || err.message.includes("API key"))) {
           document.getElementById("firebase-error").classList.remove("hidden");
         } else {
           emptyState.classList.remove("hidden");
