@@ -54,12 +54,15 @@
 
       <!-- ── TESTS TAB ──────────────────────────────────────── -->
       <div id="tab-tests">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
           <h2 style="margin:0;">All Tests</h2>
-          <button class="btn btn-primary" id="btn-new-test">+ New Test</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-ghost btn-sm" id="btn-import-json">&#8679; Import JSON</button>
+            <button class="btn btn-primary"      id="btn-new-test">+ New Test</button>
+          </div>
         </div>
         <div id="test-list"><!-- injected --></div>
-        <div id="admin-empty" class="empty-state hidden">No tests yet. Click <strong>+ New Test</strong> to create one.</div>
+        <div id="admin-empty" class="empty-state hidden">No tests yet. Click <strong>+ New Test</strong> or <strong>Import JSON</strong>.</div>
       </div>
 
       <!-- ── RESULTS TAB ────────────────────────────────────── -->
@@ -179,6 +182,38 @@
 
     </div><!-- /admin-body -->
   </div><!-- /admin-page -->
+
+  <!-- Import JSON modal -->
+  <div class="modal-overlay hidden" id="import-modal">
+    <div class="modal" style="max-width:640px;width:100%;">
+      <h2>Import Test from JSON</h2>
+      <p>Paste your JSON below, or upload a <code>.json</code> file. Use the template as a guide when generating tests with AI.</p>
+
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer;">
+          &#128194; Upload .json file
+          <input type="file" id="import-file-input" accept=".json,application/json" style="display:none;" />
+        </label>
+        <button class="btn btn-ghost btn-sm" id="btn-download-template">&#8681; Download Template</button>
+        <button class="btn btn-ghost btn-sm" id="btn-format-json">Format JSON</button>
+      </div>
+
+      <textarea id="import-json-textarea"
+        style="width:100%;height:280px;font-family:monospace;font-size:0.82rem;
+               border:1.5px solid var(--border);border-radius:4px;padding:10px;resize:vertical;"
+        placeholder='{ "title": "My Test", "timeLimit": 60, "passages": [...], "sections": [...] }'></textarea>
+
+      <div id="import-error" class="hidden"
+           style="color:var(--accent);font-size:0.85rem;margin-top:8px;white-space:pre-wrap;font-family:monospace;"></div>
+      <div id="import-success" class="hidden"
+           style="color:#218838;font-size:0.85rem;margin-top:8px;"></div>
+
+      <div class="modal-actions" style="margin-top:14px;">
+        <button class="btn btn-ghost"    id="import-cancel">Cancel</button>
+        <button class="btn btn-primary"  id="import-confirm">&#8679; Import &amp; Save</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Delete test modal -->
   <div class="modal-overlay hidden" id="delete-modal">
