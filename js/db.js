@@ -6,7 +6,8 @@ import { db, collection, doc, getDocs, getDoc, setDoc, deleteDoc, addDoc } from 
 
 const TESTS_COLLECTION   = "tests";
 const RESULTS_COLLECTION = "results";
-const CONFIG_DOC         = "config/settings";
+const CONFIG_COLLECTION  = "config";
+const CONFIG_DOC_ID      = "settings";
 
 // ── Tests ──────────────────────────────────────────────────────
 export async function getAllTests() {
@@ -53,7 +54,7 @@ export async function deleteResult(id) {
 
 // ── Config (admin password, class list etc.) ───────────────────
 export async function getConfig() {
-  const snap = await getDoc(doc(db, CONFIG_DOC));
+  const snap = await getDoc(doc(db, CONFIG_COLLECTION, CONFIG_DOC_ID));
   if (!snap.exists()) return { adminPassword: "admin123", classList: ["S3C", "S5B"] };
   const data = snap.data();
   if (!data.classList) data.classList = ["S3C", "S5B"];
@@ -63,7 +64,7 @@ export async function getConfig() {
 export async function saveConfig(configData) {
   // Merge with existing config so partial saves don't wipe other fields
   const existing = await getConfig();
-  await setDoc(doc(db, CONFIG_DOC), { ...existing, ...configData });
+  await setDoc(doc(db, CONFIG_COLLECTION, CONFIG_DOC_ID), { ...existing, ...configData });
 }
 
 // ── Seed helper: upload sample test if Firestore is empty ──────
