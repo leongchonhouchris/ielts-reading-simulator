@@ -129,16 +129,340 @@ async function loadTestList() {
         <div class="item-meta">${(test.passages||[]).length} passages &nbsp;·&nbsp; ${qCount} questions &nbsp;·&nbsp; ${test.timeLimit||60} min</div>
       </div>
       <div class="item-actions">
+        <button class="btn btn-ghost btn-sm" data-action="clone"  data-id="${test.id}" title="Duplicate this test">Clone</button>
+        <button class="btn btn-ghost btn-sm" data-action="export" data-id="${test.id}" title="Download as JSON">Export</button>
         <button class="btn btn-ghost btn-sm" data-action="edit"   data-id="${test.id}">Edit</button>
         <button class="btn btn-danger btn-sm" data-action="delete" data-id="${test.id}">Delete</button>
       </div>`;
     item.querySelector("[data-action='edit']").addEventListener("click",   () => openEditor(test.id));
     item.querySelector("[data-action='delete']").addEventListener("click", () => confirmDeleteTest(test.id));
+    item.querySelector("[data-action='clone']").addEventListener("click",  () => cloneTest(test));
+    item.querySelector("[data-action='export']").addEventListener("click", () => exportTestAsJson(test));
     testList.appendChild(item);
   });
 }
 
 document.getElementById("btn-new-test").addEventListener("click", () => openEditor(null));
+
+// ── Clone test ─────────────────────────────────────────────────
+async function cloneTest(test) {
+  const { id, ...data } = test;   // strip Firestore id so saveTest creates a new doc
+  const cloned = {
+    ...data,
+    title: (data.title || "Untitled") + " (Copy)",
+  };
+  try {
+    await saveTest(cloned);
+    loadTestList();
+  } catch (err) {
+    alert("Clone failed: " + err.message);
+  }
+}
+
+// ── Export test as JSON ─────────────────────────────────────────
+function exportTestAsJson(test) {
+  const { id, ...data } = test;   // omit the Firestore id from the export
+  const json   = JSON.stringify(data, null, 2);
+  const blob   = new Blob([json], { type: "application/json" });
+  const url    = URL.createObjectURL(blob);
+  const a      = document.createElement("a");
+  const slug   = (data.title || "test").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  a.href       = url;
+  a.download   = `${slug}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Import JSON modal ──────────────────────────────────────────
+const importModal    = document.getElementById("import-modal");
+const importTextarea = document.getElementById("import-json-textarea");
+const importError    = document.getElementById("import-error");
+const importSuccess  = document.getElementById("import-success");
+
+document.getElementById("btn-import-json").addEventListener("click", () => {
+  importTextarea.value = "";
+  importError.classList.add("hidden");
+  importSuccess.classList.add("hidden");
+  importModal.classList.remove("hidden");
+  importTextarea.focus();
+});
+
+document.getElementById("import-cancel").addEventListener("click", () => {
+  importModal.classList.add("hidden");
+});
+
+// File upload → read into textarea
+document.getElementById("import-file-input").addEventListener("change", e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    importTextarea.value = ev.target.result;
+    importError.classList.add("hidden");
+    importSuccess.classList.add("hidden");
+  };
+  reader.readAsText(file);
+  e.target.value = ""; // reset so same file can be re-selected
+});
+
+// Format JSON button
+document.getElementById("btn-format-json").addEventListener("click", () => {
+  try {
+    const parsed = JSON.parse(importTextarea.value);
+    importTextarea.value = JSON.stringify(parsed, null, 2);
+    importError.classList.add("hidden");
+  } catch (err) {
+    importError.textContent = "Invalid JSON — cannot format.\n" + err.message;
+    importError.classList.remove("hidden");
+  }
+});
+
+// Download template
+document.getElementById("btn-download-template").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(JSON_TEMPLATE, null, 2)], { type: "application/json" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = "ielts-test-template.json";
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// Import & Save
+document.getElementById("import-confirm").addEventListener("click", async () => {
+  importError.classList.add("hidden");
+  importSuccess.classList.add("hidden");
+
+  let parsed;
+  try {
+    parsed = JSON.parse(importTextarea.value);
+  } catch (err) {
+    importError.textContent = "Invalid JSON:\n" + err.message;
+    importError.classList.remove("hidden");
+    return;
+  }
+
+  // Validate minimum required fields
+  const validationError = validateTestJson(parsed);
+  if (validationError) {
+    importError.textContent = "Validation error:\n" + validationError;
+    importError.classList.remove("hidden");
+    return;
+  }
+
+  // Strip any id field so Firestore creates a new document
+  const { id: _id, ...cleanData } = parsed;
+
+  try {
+    const newId = await saveTest(cleanData);
+    importSuccess.textContent = `Test "${escHtml(cleanData.title)}" imported successfully (ID: ${newId}).`;
+    importSuccess.classList.remove("hidden");
+    importTextarea.value = "";
+    loadTestList();
+    // Auto-close after 2 seconds
+    setTimeout(() => importModal.classList.add("hidden"), 2000);
+  } catch (err) {
+    importError.textContent = "Firestore save failed:\n" + err.message;
+    importError.classList.remove("hidden");
+  }
+});
+
+// ── JSON validation ─────────────────────────────────────────────
+function validateTestJson(obj) {
+  if (typeof obj !== "object" || obj === null) return "Root must be a JSON object.";
+  if (!obj.title)     return 'Missing required field: "title"';
+  if (!Array.isArray(obj.passages) || obj.passages.length === 0)
+    return '"passages" must be a non-empty array.';
+  if (!Array.isArray(obj.sections) || obj.sections.length === 0)
+    return '"sections" must be a non-empty array.';
+
+  for (let i = 0; i < obj.passages.length; i++) {
+    const p = obj.passages[i];
+    if (!p.id)    return `passages[${i}] is missing "id".`;
+    if (!p.title) return `passages[${i}] is missing "title".`;
+    if (!Array.isArray(p.paragraphs)) return `passages[${i}].paragraphs must be an array.`;
+  }
+
+  const validTypes = [
+    "multiple_choice","true_false_ng","matching_headings",
+    "matching_information","matching_features","short_answer",
+    "sentence_completion","summary_completion","diagram_completion"
+  ];
+  for (let i = 0; i < obj.sections.length; i++) {
+    const s = obj.sections[i];
+    if (!s.passageId)               return `sections[${i}] is missing "passageId".`;
+    if (!validTypes.includes(s.type)) return `sections[${i}] has unknown type "${s.type}". Valid types: ${validTypes.join(", ")}`;
+    if (!Array.isArray(s.questions)) return `sections[${i}].questions must be an array.`;
+    for (let j = 0; j < s.questions.length; j++) {
+      const q = s.questions[j];
+      if (q.id === undefined || q.id === null) return `sections[${i}].questions[${j}] is missing "id".`;
+      if (q.answer === undefined)              return `sections[${i}].questions[${j}] (id:${q.id}) is missing "answer".`;
+    }
+  }
+  return null; // valid
+}
+
+// ── JSON template (minimal, downloadable) ──────────────────────
+const JSON_TEMPLATE = {
+  "title": "IELTS Academic Reading – Practice Test N",
+  "timeLimit": 60,
+  "passages": [
+    {
+      "id": "p1",
+      "title": "Passage Title Here",
+      "source": "Adapted from Source Name, Year",
+      "paragraphs": [
+        { "label": "A", "text": "First paragraph text here." },
+        { "label": "B", "text": "Second paragraph text here." },
+        { "label": "C", "text": "Third paragraph text here." }
+      ]
+    },
+    {
+      "id": "p2",
+      "title": "Second Passage Title",
+      "source": "Source",
+      "paragraphs": [
+        { "label": "A", "text": "Paragraph text." }
+      ]
+    },
+    {
+      "id": "p3",
+      "title": "Third Passage Title",
+      "source": "Source",
+      "paragraphs": [
+        { "label": "A", "text": "Paragraph text." }
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "passageId": "p1",
+      "type": "matching_headings",
+      "title": "Questions 1–5: Matching Headings",
+      "instruction": "Choose the correct heading for paragraphs B–F from the list of headings below.",
+      "options": [
+        "i.   Heading option one",
+        "ii.  Heading option two",
+        "iii. Heading option three"
+      ],
+      "questions": [
+        { "id": 1, "stem": "Paragraph B", "answer": "i" },
+        { "id": 2, "stem": "Paragraph C", "answer": "ii" }
+      ]
+    },
+    {
+      "passageId": "p1",
+      "type": "true_false_ng",
+      "title": "Questions 6–9: True / False / Not Given",
+      "instruction": "Do the following statements agree with the information in the passage?",
+      "questions": [
+        { "id": 6, "stem": "Statement to evaluate.", "answer": "TRUE" },
+        { "id": 7, "stem": "Another statement.",     "answer": "FALSE" },
+        { "id": 8, "stem": "Yet another statement.", "answer": "NOT GIVEN" }
+      ]
+    },
+    {
+      "passageId": "p1",
+      "type": "multiple_choice",
+      "title": "Questions 9–11: Multiple Choice",
+      "instruction": "Choose the correct letter, A, B, C, or D.",
+      "questions": [
+        {
+          "id": 9,
+          "stem": "What does the author suggest about X?",
+          "options": [
+            { "letter": "A", "text": "Option A text" },
+            { "letter": "B", "text": "Option B text" },
+            { "letter": "C", "text": "Option C text" },
+            { "letter": "D", "text": "Option D text" }
+          ],
+          "answer": "B"
+        }
+      ]
+    },
+    {
+      "passageId": "p2",
+      "type": "matching_information",
+      "title": "Questions 12–15: Matching Information",
+      "instruction": "Which paragraph contains the following information?",
+      "questions": [
+        { "id": 12, "stem": "A reference to a specific statistic.", "answer": "B" },
+        { "id": 13, "stem": "A description of a process.",          "answer": "A" }
+      ]
+    },
+    {
+      "passageId": "p2",
+      "type": "short_answer",
+      "title": "Questions 16–19: Short Answer",
+      "instruction": "Answer the questions below. Choose NO MORE THAN THREE WORDS from the passage.",
+      "questions": [
+        { "id": 16, "stem": "What term is used to describe X?",  "answer": "example answer" },
+        { "id": 17, "stem": "How long does the process take?",   "answer": "three days" }
+      ]
+    },
+    {
+      "passageId": "p2",
+      "type": "sentence_completion",
+      "title": "Questions 20–23: Sentence Completion",
+      "instruction": "Complete the sentences below. Choose NO MORE THAN TWO WORDS from the passage.",
+      "questions": [
+        { "id": 20, "stem": "The main cause of X is ___________.", "answer": "rising temperatures" }
+      ]
+    },
+    {
+      "passageId": "p3",
+      "type": "matching_features",
+      "title": "Questions 24–27: Matching Features",
+      "instruction": "Match each statement with the correct person/group.",
+      "options": [
+        "A  Person or Group One",
+        "B  Person or Group Two",
+        "C  Person or Group Three"
+      ],
+      "questions": [
+        { "id": 24, "stem": "Claimed that X leads to Y.",         "answer": "A" },
+        { "id": 25, "stem": "Demonstrated a link between X and Z.", "answer": "C" }
+      ]
+    },
+    {
+      "passageId": "p3",
+      "type": "true_false_ng",
+      "variant": "yes_no_ng",
+      "title": "Questions 28–31: Yes / No / Not Given",
+      "instruction": "Do the following statements agree with the claims of the writer?",
+      "questions": [
+        { "id": 28, "stem": "The writer argues that X is inevitable.", "answer": "YES" },
+        { "id": 29, "stem": "The writer believes Y is the best solution.", "answer": "NO" }
+      ]
+    },
+    {
+      "passageId": "p3",
+      "type": "summary_completion",
+      "title": "Questions 32–35: Summary Completion",
+      "instruction": "Complete the summary using words from the box.",
+      "wordBank": ["rapid", "gradual", "external", "internal", "traditional", "innovative"],
+      "summaryTemplate": "The process is described as [32] rather than sudden. It is driven by [33] factors, meaning it originates from within the system itself.",
+      "questions": [
+        { "id": 32, "blankIndex": 0, "answer": "gradual" },
+        { "id": 33, "blankIndex": 1, "answer": "internal" }
+      ]
+    },
+    {
+      "passageId": "p3",
+      "type": "diagram_completion",
+      "title": "Questions 36–37: Diagram Label Completion",
+      "instruction": "Label the diagram. Choose NO MORE THAN TWO WORDS from the passage.",
+      "diagramImage": null,
+      "diagramPlaceholder": true,
+      "diagramNote": "Replace with your diagram image. Place it in /images/ and set diagramImage to the path.",
+      "diagramDescription": "Diagram description for context.",
+      "questions": [
+        { "id": 36, "stem": "Label A — What is this part called?", "answer": "correct answer" },
+        { "id": 37, "stem": "Label B — What process occurs here?",  "answer": "correct answer" }
+      ]
+    }
+  ]
+};
 
 // ── Delete test ────────────────────────────────────────────────
 const deleteModal = document.getElementById("delete-modal");
