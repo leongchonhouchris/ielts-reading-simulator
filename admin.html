@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IELTS Simulator – Admin Panel</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Loading overlay -->
+  <div class="spinner-overlay" id="loading">
+    <div class="spinner"></div>
+    <div style="color:#555;font-size:0.95rem;">Loading…</div>
+  </div>
+
+  <!-- Password gate (shown before login) -->
+  <div class="modal-overlay" id="password-gate">
+    <div class="modal" style="max-width:360px;">
+      <h2>Admin Panel</h2>
+      <p>Enter the admin password to continue.</p>
+      <div class="form-group">
+        <label for="pw-input">Password</label>
+        <input type="password" id="pw-input" class="text-input" style="max-width:100%;" placeholder="Password" />
+      </div>
+      <div id="pw-error" class="hidden" style="color:#c8102e;font-size:0.85rem;margin-bottom:10px;">Incorrect password.</div>
+      <div class="modal-actions">
+        <a href="index.html" class="btn btn-ghost">Back</a>
+        <button class="btn btn-primary" id="pw-submit">Login</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin UI (hidden until login) -->
+  <div id="admin-page" class="hidden">
+
+    <header class="admin-header">
+      <div class="logo">IELTS <span>Admin Panel</span></div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <a href="index.html" class="btn btn-ghost btn-sm" style="color:#cce0ff;border-color:#7db8f7;">View Site</a>
+        <button class="btn btn-ghost btn-sm" id="btn-settings" style="color:#cce0ff;border-color:#7db8f7;">Settings</button>
+        <button class="btn btn-ghost btn-sm" id="btn-logout"   style="color:#cce0ff;border-color:#7db8f7;">Logout</button>
+      </div>
+    </header>
+
+    <div class="admin-body">
+
+      <!-- Tab bar -->
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="tests">Tests</button>
+        <button class="tab-btn"        data-tab="results">Results</button>
+        <button class="tab-btn"        data-tab="settings">Settings</button>
+      </div>
+
+      <!-- ── TESTS TAB ──────────────────────────────────────── -->
+      <div id="tab-tests">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <h2 style="margin:0;">All Tests</h2>
+          <button class="btn btn-primary" id="btn-new-test">+ New Test</button>
+        </div>
+        <div id="test-list"><!-- injected --></div>
+        <div id="admin-empty" class="empty-state hidden">No tests yet. Click <strong>+ New Test</strong> to create one.</div>
+      </div>
+
+      <!-- ── RESULTS TAB ────────────────────────────────────── -->
+      <div id="tab-results" class="hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+          <h2 style="margin:0;">Student Results</h2>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            <button class="btn btn-ghost btn-sm" id="btn-refresh-results">Refresh</button>
+            <button class="btn btn-primary btn-sm" id="btn-export-csv">Export CSV</button>
+          </div>
+        </div>
+
+        <!-- Filter bar -->
+        <div class="results-filter-bar">
+          <select id="filter-test" class="match-select" style="max-width:260px;">
+            <option value="">All Tests</option>
+          </select>
+          <select id="filter-class" class="match-select" style="max-width:160px;">
+            <option value="">All Classes</option>
+          </select>
+          <input type="text" id="filter-name" class="text-input" style="max-width:200px;"
+                 placeholder="Search student name…" />
+          <button class="btn btn-ghost btn-sm" id="btn-clear-filters">Clear</button>
+        </div>
+
+        <!-- Summary strip -->
+        <div class="results-summary" id="results-summary"></div>
+
+        <!-- Results table -->
+        <div style="overflow-x:auto;">
+          <table class="results-dash-table" id="results-dash-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Student Name</th>
+                <th>Class</th>
+                <th>Test</th>
+                <th>Date &amp; Time</th>
+                <th>Time Taken</th>
+                <th>Score</th>
+                <th>Band</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="results-tbody-admin"></tbody>
+          </table>
+        </div>
+        <div id="results-empty" class="empty-state hidden">No results yet.</div>
+      </div>
+
+      <!-- ── SETTINGS TAB ───────────────────────────────────── -->
+      <div id="tab-settings" class="hidden">
+        <h2>Settings</h2>
+
+        <!-- Class list -->
+        <div class="admin-form" style="max-width:480px;margin-bottom:24px;">
+          <h3>Class List</h3>
+          <div class="form-group">
+            <label>Classes (comma-separated)</label>
+            <input type="text" id="class-list-input" placeholder="e.g. S3C, S5B, S6A" />
+            <div class="form-hint">Students will select from this list on the test entry screen.</div>
+          </div>
+          <div id="class-save-msg" class="hidden" style="font-size:0.88rem;margin-bottom:10px;"></div>
+          <button class="btn btn-primary" id="btn-save-classes">Save Class List</button>
+        </div>
+
+        <!-- Password -->
+        <div class="admin-form" style="max-width:480px;">
+          <h3>Change Admin Password</h3>
+          <div class="form-group">
+            <label>New Password</label>
+            <input type="password" id="new-password" class="text-input" style="max-width:100%;" placeholder="New password" />
+          </div>
+          <div class="form-group">
+            <label>Confirm Password</label>
+            <input type="password" id="confirm-password" class="text-input" style="max-width:100%;" placeholder="Confirm password" />
+          </div>
+          <div id="pw-save-msg" class="hidden" style="font-size:0.88rem;margin-bottom:10px;"></div>
+          <button class="btn btn-primary" id="btn-save-password">Save Password</button>
+        </div>
+      </div>
+
+      <!-- ── TEST EDITOR (hidden until edit/new) ───────────── -->
+      <div id="test-editor" class="hidden">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+          <button class="btn btn-ghost" id="btn-back-to-list">← Back to Tests</button>
+          <h2 style="margin:0;" id="editor-heading">Edit Test</h2>
+        </div>
+
+        <div class="admin-form">
+          <h3>Test Details</h3>
+          <div class="form-group">
+            <label>Test Title</label>
+            <input type="text" id="ed-title" placeholder="e.g. IELTS Academic Reading – Practice Test 1" />
+          </div>
+          <div class="form-group">
+            <label>Time Limit (minutes)</label>
+            <input type="number" id="ed-timelimit" value="60" min="1" max="180" style="max-width:120px;" />
+          </div>
+
+          <h3 style="margin-top:28px;">Passages</h3>
+          <div id="passages-editor"><!-- injected --></div>
+          <button class="btn btn-ghost btn-sm" id="btn-add-passage" style="margin-bottom:24px;">+ Add Passage</button>
+
+          <h3>Question Sections</h3>
+          <div id="sections-editor"><!-- injected --></div>
+          <button class="btn btn-ghost btn-sm" id="btn-add-section">+ Add Section</button>
+
+          <div style="display:flex;gap:12px;margin-top:32px;border-top:1.5px solid var(--border);padding-top:24px;">
+            <button class="btn btn-primary" id="btn-save-test">Save Test</button>
+            <button class="btn btn-ghost"   id="btn-cancel-edit">Cancel</button>
+            <button class="btn btn-danger"  id="btn-delete-test" style="margin-left:auto;">Delete Test</button>
+          </div>
+          <div id="save-msg" class="hidden" style="font-size:0.88rem;color:#218838;margin-top:10px;"></div>
+        </div>
+      </div>
+
+    </div><!-- /admin-body -->
+  </div><!-- /admin-page -->
+
+  <!-- Delete test modal -->
+  <div class="modal-overlay hidden" id="delete-modal">
+    <div class="modal">
+      <h2>Delete Test?</h2>
+      <p>This action cannot be undone. The test will be permanently removed from Firestore.</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="del-cancel">Cancel</button>
+        <button class="btn btn-danger" id="del-confirm">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete result modal -->
+  <div class="modal-overlay hidden" id="delete-result-modal">
+    <div class="modal">
+      <h2>Delete Result?</h2>
+      <p>This will permanently remove this student's submission. This cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="del-result-cancel">Cancel</button>
+        <button class="btn btn-danger" id="del-result-confirm">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>

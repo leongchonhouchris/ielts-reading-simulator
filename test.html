@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IELTS Reading Test</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Loading overlay -->
+  <div class="spinner-overlay" id="loading">
+    <div class="spinner"></div>
+    <div style="color:#555;font-size:0.95rem;">Loading test…</div>
+  </div>
+
+  <!-- ── TOP BAR ──────────────────────────────────────────── -->
+  <header id="sim-topbar">
+    <div class="tb-logo">IELTS <span>Reading</span></div>
+    <div class="tb-title" id="tb-test-title"></div>
+    <div class="tb-right">
+      <div id="timer-display">60:00</div>
+      <button class="btn btn-ghost btn-sm" id="btn-review" style="color:#cce0ff;border-color:#7db8f7;">Review</button>
+      <button class="btn btn-danger btn-sm" id="btn-submit">Submit</button>
+    </div>
+  </header>
+
+  <!-- ── PASSAGE TABS ─────────────────────────────────────── -->
+  <nav id="passage-nav" id="passage-nav">
+    <!-- Tabs injected by JS -->
+  </nav>
+
+  <!-- ── SPLIT SCREEN ─────────────────────────────────────── -->
+  <div id="sim-body">
+    <div id="passage-pane">
+      <!-- Passage content injected by JS -->
+    </div>
+    <div id="question-pane">
+      <!-- Questions injected by JS -->
+    </div>
+  </div>
+
+  <!-- ── REVIEW PANEL (hidden by default) ─────────────────── -->
+  <div id="review-panel" class="hidden">
+    <h4>Review your answers — click any number to jump to that question</h4>
+    <div class="review-grid" id="review-grid"></div>
+  </div>
+
+  <!-- ── HIGHLIGHT TOOLBAR (hidden by default) ─────────────── -->
+  <div id="hl-toolbar" class="hidden">
+    <button class="hl-btn-yellow" title="Highlight yellow" data-color="yellow"></button>
+    <button class="hl-btn-green"  title="Highlight green"  data-color="green"></button>
+    <button class="hl-btn-pink"   title="Highlight pink"   data-color="pink"></button>
+    <button class="hl-btn-remove" title="Remove highlight"  data-color="remove">✕</button>
+    <button class="hl-btn-note"   title="Add note"          id="hl-add-note">Note</button>
+  </div>
+
+  <!-- ── NOTE EDITOR MODAL ─────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="note-modal-overlay">
+    <div class="modal" id="note-modal">
+      <h2>Add / Edit Note</h2>
+      <div class="form-group">
+        <textarea id="note-text-input" placeholder="Type your note here…"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="note-cancel">Cancel</button>
+        <button class="btn btn-primary" id="note-save">Save Note</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SUBMIT CONFIRMATION MODAL ─────────────────────────── -->
+  <div class="modal-overlay hidden" id="submit-modal-overlay">
+    <div class="modal">
+      <h2>Submit Test?</h2>
+      <p id="submit-modal-body">Are you sure you want to submit? You cannot change your answers after submitting.</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="submit-cancel">Cancel</button>
+        <button class="btn btn-danger" id="submit-confirm">Submit Now</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RESULTS PAGE (hidden until submit) ─────────────────── -->
+  <div id="results-wrapper" class="hidden" style="overflow-y:auto;height:100vh;padding-top:24px;background:var(--bg-page);">
+    <div id="results-page">
+      <div class="results-header">
+        <h1>Test Complete</h1>
+        <div class="band-badge" id="res-band">–</div>
+        <div class="score-line" id="res-score"></div>
+      </div>
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Question</th>
+            <th>Your Answer</th>
+            <th>Correct Answer</th>
+            <th>Result</th>
+          </tr>
+        </thead>
+        <tbody id="results-tbody"></tbody>
+      </table>
+      <div style="text-align:center;margin-top:32px;">
+        <a href="index.html" class="btn btn-primary">Back to Test List</a>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/simulator.js"></script>
+</body>
+</html>
