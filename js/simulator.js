@@ -313,7 +313,7 @@ function buildMCQQuestion(q) {
     const checked = answers[q.id] === o.letter ? "checked" : "";
     return `<label class="mcq-option">
       <input type="radio" name="mcq_${q.id}" value="${escHtml(o.letter)}" ${checked} />
-      <label><strong>${escHtml(o.letter)}</strong>&nbsp; ${escHtml(o.text || "")}</label>
+      <span><strong>${escHtml(o.letter)}</strong>&nbsp; ${escHtml(o.text || "")}</span>
     </label>`;
   }).join("");
 

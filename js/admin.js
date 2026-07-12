@@ -1188,7 +1188,7 @@ function collectFormData() {
       const q    = { id: qid, stem, answer: ans };
       if (type === "multiple_choice") {
         q.options = [];
-        qblock.querySelectorAll(".qe-option-row").forEach(row => {
+        qblock.querySelectorAll(".option-editor-row").forEach(row => {
           const letter = row.querySelector(".qe-opt-letter").value.trim();
           const text   = row.querySelector(".qe-opt-text").value.trim();
           if (letter) q.options.push({ letter, text });
