@@ -30,8 +30,8 @@
 // Set ANALYSIS_MODE = "A" to switch to type-level only in the future.
 const ANALYSIS_MODE = "B";
 
-const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_MODEL = "google/gemini-2.0-flash";
 
 // Human-readable labels for question type codes
 const TYPE_LABELS = {
@@ -95,33 +95,36 @@ export async function handler(event) {
 
   let analysisText;
   try {
-    const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+    const res = await fetch(OPENROUTER_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+        "HTTP-Referer":  "https://ielts-reading-simulator.netlify.app",
+        "X-Title":       "IELTS Reading Simulator",
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature:     0.4,
-          maxOutputTokens: 900,
-        },
+        model: OPENROUTER_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature:       0.4,
+        max_tokens:        900,
       }),
     });
 
     if (!res.ok) {
       const errText = await res.text();
-      console.error("Gemini API error:", errText);
+      console.error("OpenRouter API error:", errText);
       return jsonResponse(502, { error: "AI service returned an error. Please try again." });
     }
 
     const data = await res.json();
-    analysisText =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    analysisText = data?.choices?.[0]?.message?.content || "";
 
     if (!analysisText) {
       return jsonResponse(502, { error: "AI returned an empty response." });
     }
   } catch (err) {
-    console.error("Fetch to Gemini failed:", err);
+    console.error("Fetch to OpenRouter failed:", err);
     return jsonResponse(502, { error: "Could not reach AI service. Please try again." });
   }
 
