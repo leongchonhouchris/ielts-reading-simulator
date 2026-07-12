@@ -107,7 +107,7 @@ export async function handler(event) {
         model:       OPENROUTER_MODEL,
         messages:    [{ role: "user", content: prompt }],
         temperature: 0.4,
-        max_tokens:  900,
+        max_tokens:  1400,
       }),
     });
 
@@ -147,13 +147,18 @@ function buildPrompt({ studentName, studentClass, testTitle, score, totalQuestio
     byType[label].push(q);
   });
 
-  // ── Option B: per-question detail block ──────────────────────
+  // ── Option B: per-question detail block (capped at 20) ───────
   let wrongBlock = "";
+  const WRONG_CAP = 20;
   if (mode === "B" && wrongQuestions.length > 0) {
-    wrongBlock = wrongQuestions.map(q => {
+    const capped = wrongQuestions.slice(0, WRONG_CAP);
+    wrongBlock = capped.map(q => {
       const typeLabel = q.typeLabel || TYPE_LABELS[q.type] || q.type;
       return `  Q${q.id} [${typeLabel}]\n    Question: ${q.stem}\n    Student answered: "${q.given || "(no answer)"}"\n    Correct answer: "${q.expected}"`;
     }).join("\n\n");
+    if (wrongQuestions.length > WRONG_CAP) {
+      wrongBlock += `\n\n  (${wrongQuestions.length - WRONG_CAP} further wrong answers not listed — see type breakdown above.)`;
+    }
   }
 
   // ── Type-level summary block (used in both modes) ─────────────
@@ -191,7 +196,7 @@ For each wrong answer listed above, write one concise sentence explaining why th
 SECTION 4 — TIPS FOR IMPROVEMENT` : "SECTION 3 — TIPS FOR IMPROVEMENT"}
 Give exactly 3 specific, actionable tips tailored to the types of mistakes this student made.
 
-Keep the total report under 400 words. Write in clear, encouraging but honest language appropriate for a secondary school student preparing for IELTS.`;
+Keep the total report under ${wrongQuestions.length <= 10 ? 350 : wrongQuestions.length <= 20 ? 500 : 650} words. Write in clear, encouraging but honest language appropriate for a secondary school student preparing for IELTS.`;
 
   return header + detailSection + instructions;
 }
