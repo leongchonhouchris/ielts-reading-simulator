@@ -13,25 +13,25 @@
 //   timeTaken:      string,   // "MM:SS"
 //   wrongQuestions: [
 //     {
-//       id:       number,
-//       type:     string,   // e.g. "true_false_ng"
-//       typeLabel: string,  // e.g. "True / False / Not Given"
-//       stem:     string,
-//       given:    string,
-//       expected: string
+//       id:        number,
+//       type:      string,   // e.g. "true_false_ng"
+//       typeLabel: string,   // e.g. "True / False / Not Given"
+//       stem:      string,
+//       given:     string,
+//       expected:  string
 //     }
 //   ]
 // }
 //
-// ENV: GEMINI_API_KEY
+// ENV: YEK_IPA_INIMEG  (OpenRouter API key)
 // =============================================================
 
 // ── Switch between Option A (type-level) and Option B (per-question)
 // Set ANALYSIS_MODE = "A" to switch to type-level only in the future.
 const ANALYSIS_MODE = "B";
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const OPENROUTER_MODEL = "google/gemini-2.0-flash";
+const OPENROUTER_URL   = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_MODEL = "google/gemini-2.0-flash-001";
 
 // Human-readable labels for question type codes
 const TYPE_LABELS = {
@@ -87,7 +87,7 @@ export async function handler(event) {
     mode: ANALYSIS_MODE,
   });
 
-  // ── Call Gemini ───────────────────────────────────────────────
+  // ── Call OpenRouter ───────────────────────────────────────────
   const apiKey = process.env.YEK_IPA_INIMEG;
   if (!apiKey) {
     return jsonResponse(500, { error: "YEK_IPA_INIMEG is not configured on the server." });
@@ -104,10 +104,10 @@ export async function handler(event) {
         "X-Title":       "IELTS Reading Simulator",
       },
       body: JSON.stringify({
-        model: OPENROUTER_MODEL,
-        messages: [{ role: "user", content: prompt }],
-        temperature:       0.4,
-        max_tokens:        900,
+        model:       OPENROUTER_MODEL,
+        messages:    [{ role: "user", content: prompt }],
+        temperature: 0.4,
+        max_tokens:  900,
       }),
     });
 
@@ -137,8 +137,7 @@ export async function handler(event) {
 function buildPrompt({ studentName, studentClass, testTitle, score, totalQuestions,
                        bandEstimate, timeTaken, wrongQuestions, mode }) {
 
-  const pct     = Math.round((score / totalQuestions) * 100);
-  const correct = totalQuestions - wrongQuestions.length;
+  const pct = Math.round((score / totalQuestions) * 100);
 
   // Group wrong questions by type
   const byType = {};
@@ -157,8 +156,8 @@ function buildPrompt({ studentName, studentClass, testTitle, score, totalQuestio
     }).join("\n\n");
   }
 
-  // ── Option A: type-level summary block ───────────────────────
-  let typeSummaryBlock = Object.entries(byType).map(([label, qs]) => {
+  // ── Type-level summary block (used in both modes) ─────────────
+  const typeSummaryBlock = Object.entries(byType).map(([label, qs]) => {
     return `  - ${label}: ${qs.length} wrong`;
   }).join("\n");
 
