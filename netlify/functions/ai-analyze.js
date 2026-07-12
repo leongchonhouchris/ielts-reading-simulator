@@ -31,7 +31,7 @@
 const ANALYSIS_MODE = "B";
 
 const OPENROUTER_URL   = "https://openrouter.ai/api/v1/chat/completions";
-const OPENROUTER_MODEL = "google/gemini-2.0-flash-001";
+const OPENROUTER_MODEL = "google/gemini-2.5-flash-lite";
 
 // Human-readable labels for question type codes
 const TYPE_LABELS = {
