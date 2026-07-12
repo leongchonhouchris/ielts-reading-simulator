@@ -396,7 +396,7 @@ function buildDiagramCompletion(section) {
   wrap.className = "q-item";
 
   let diagramHtml = "";
-  if (section.diagramPlaceholder || !section.diagramImage) {
+  if (!section.diagramImage) {
     diagramHtml = `<div class="diagram-container">
       <div class="diagram-placeholder">
         📌 ${escHtml(section.diagramNote || "Diagram placeholder — see admin panel to add an image.")}
