@@ -101,7 +101,33 @@
         </thead>
         <tbody id="results-tbody"></tbody>
       </table>
-      <div style="text-align:center;margin-top:32px;">
+
+      <!-- ── AI Analysis Report ─────────────────────────────── -->
+      <div id="ai-report-section" class="ai-report-section">
+        <div class="ai-report-header">
+          <h2>Personalised Analysis</h2>
+          <button class="btn btn-ghost btn-sm no-print" id="btn-print-report"
+                  style="display:none;" onclick="window.print()">
+            &#128438; Print / Save as PDF
+          </button>
+        </div>
+
+        <!-- Loading state -->
+        <div id="ai-report-loading" class="ai-report-loading">
+          <div class="spinner" style="width:28px;height:28px;border-width:3px;"></div>
+          <span>Generating your personalised analysis…</span>
+        </div>
+
+        <!-- Analysis content (hidden until ready) -->
+        <div id="ai-report-content" class="ai-report-content" style="display:none;"></div>
+
+        <!-- Error state (hidden until error) -->
+        <div id="ai-report-error" class="ai-report-error" style="display:none;">
+          Analysis could not be generated. Please try again later.
+        </div>
+      </div>
+
+      <div style="text-align:center;margin-top:32px;" class="no-print">
         <a href="index.html" class="btn btn-primary">Back to Test List</a>
       </div>
     </div>

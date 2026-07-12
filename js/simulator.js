@@ -700,6 +700,31 @@ submitConfirm.addEventListener("click", () => {
   showResults();
 });
 
+// ── Question-type label map (mirrors netlify function) ─────────
+const TYPE_LABELS = {
+  multiple_choice:      "Multiple Choice",
+  true_false_ng:        "True / False / Not Given",
+  matching_headings:    "Matching Headings",
+  matching_information: "Matching Information",
+  matching_features:    "Matching Features",
+  short_answer:         "Short Answer",
+  sentence_completion:  "Sentence Completion",
+  summary_completion:   "Summary / Table Completion",
+  diagram_completion:   "Diagram Label Completion",
+};
+
+// Build a map of questionId → { type, typeLabel } from all sections
+function buildQuestionTypeMap() {
+  const map = {};
+  (TEST.sections || []).forEach(sec => {
+    const typeLabel = TYPE_LABELS[sec.type] || sec.type;
+    (sec.questions || []).forEach(q => {
+      map[q.id] = { type: sec.type, typeLabel };
+    });
+  });
+  return map;
+}
+
 // ── Results ────────────────────────────────────────────────────
 function showResults() {
   // Hide the test UI
@@ -775,6 +800,83 @@ function showResults() {
     saveResult(resultPayload).catch(err => {
       console.error("Failed to save result:", err);
     });
+
+    // ── Trigger AI analysis ──────────────────────────────────
+    requestAiAnalysis({
+      studentName,
+      studentClass,
+      testTitle:      TEST.title || "IELTS Reading Practice Test",
+      score:          correct,
+      totalQuestions: total,
+      bandEstimate:   band,
+      timeTaken,
+      questionResults,
+    });
+  }
+}
+
+// ── AI Analysis ────────────────────────────────────────────────
+async function requestAiAnalysis({ studentName, studentClass, testTitle,
+                                   score, totalQuestions, bandEstimate,
+                                   timeTaken, questionResults }) {
+  const loadingEl = document.getElementById("ai-report-loading");
+  const contentEl = document.getElementById("ai-report-content");
+  const errorEl   = document.getElementById("ai-report-error");
+  const printBtn  = document.getElementById("btn-print-report");
+
+  // Build wrong-questions list with type info
+  const qtMap = buildQuestionTypeMap();
+  const wrongQuestions = questionResults
+    .filter(q => !q.correct)
+    .map(q => ({
+      id:        q.id,
+      type:      qtMap[q.id]?.type      || "unknown",
+      typeLabel: qtMap[q.id]?.typeLabel || "Unknown",
+      stem:      q.stem,
+      given:     q.given,
+      expected:  q.expected,
+    }));
+
+  const payload = {
+    studentName, studentClass, testTitle,
+    score, totalQuestions, bandEstimate, timeTaken,
+    wrongQuestions,
+  };
+
+  try {
+    const res = await fetch("/api/ai-analyze", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      throw new Error(data.error || "Unknown error from analysis service.");
+    }
+
+    // Render the plain-text analysis with line breaks preserved
+    const escaped = data.analysis
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+
+    // Bold the section headers (lines starting with "SECTION")
+    const formatted = escaped.replace(
+      /^(SECTION \d+ [^\n]+)/gm,
+      "<strong>$1</strong>"
+    );
+
+    contentEl.innerHTML = formatted.replace(/\n/g, "<br>");
+    loadingEl.style.display = "none";
+    contentEl.style.display = "block";
+    printBtn.style.display  = "inline-flex";
+
+  } catch (err) {
+    console.error("AI analysis error:", err);
+    loadingEl.style.display = "none";
+    errorEl.style.display   = "block";
   }
 }
 

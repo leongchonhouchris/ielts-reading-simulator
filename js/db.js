@@ -15,6 +15,14 @@ export async function getAllTests() {
   return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+// Returns only tests where visible !== false (students should use this)
+export async function getVisibleTests() {
+  const snapshot = await getDocs(collection(db, TESTS_COLLECTION));
+  return snapshot.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(t => t.visible !== false);
+}
+
 export async function getTest(id) {
   const snap = await getDoc(doc(db, TESTS_COLLECTION, id));
   if (!snap.exists()) throw new Error("Test not found: " + id);

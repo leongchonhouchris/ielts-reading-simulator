@@ -7,6 +7,7 @@ import {
   getConfig, saveConfig,
   getAllResults, deleteResult
 } from "./db.js";
+import { storage, ref, uploadBytes, getDownloadURL } from "./firebase-config.js";
 
 // ── State ──────────────────────────────────────────────────────
 let currentTestData     = null;
@@ -120,29 +121,57 @@ async function loadTestList() {
   if (allTestsCache.length === 0) { adminEmpty.classList.remove("hidden"); return; }
 
   allTestsCache.forEach(test => {
-    const qCount = (test.sections || []).reduce((s, sec) => s + (sec.questions || []).length, 0);
-    const item = document.createElement("div");
-    item.className = "test-list-item";
+    const qCount  = (test.sections || []).reduce((s, sec) => s + (sec.questions || []).length, 0);
+    const visible  = test.visible !== false;   // default: visible
+    const item     = document.createElement("div");
+    item.className = "test-list-item" + (visible ? "" : " test-hidden");
     item.innerHTML = `
-      <div>
+      <div class="item-info">
         <div class="item-title">${escHtml(test.title || "Untitled")}</div>
-        <div class="item-meta">${(test.passages||[]).length} passages &nbsp;·&nbsp; ${qCount} questions &nbsp;·&nbsp; ${test.timeLimit||60} min</div>
+        <div class="item-meta">
+          ${(test.passages||[]).length} passages &nbsp;·&nbsp; ${qCount} questions &nbsp;·&nbsp; ${test.timeLimit||60} min
+          &nbsp;·&nbsp; <span class="item-visibility-label">${visible ? "Visible to students" : "Hidden from students"}</span>
+        </div>
       </div>
       <div class="item-actions">
+        <button class="btn btn-ghost btn-sm" data-action="toggle-vis" data-id="${test.id}"
+                title="${visible ? "Hide from students" : "Show to students"}">
+          ${visible ? "&#128065; Hide" : "&#128065; Show"}
+        </button>
         <button class="btn btn-ghost btn-sm" data-action="clone"  data-id="${test.id}" title="Duplicate this test">Clone</button>
         <button class="btn btn-ghost btn-sm" data-action="export" data-id="${test.id}" title="Download as JSON">Export</button>
         <button class="btn btn-ghost btn-sm" data-action="edit"   data-id="${test.id}">Edit</button>
         <button class="btn btn-danger btn-sm" data-action="delete" data-id="${test.id}">Delete</button>
       </div>`;
-    item.querySelector("[data-action='edit']").addEventListener("click",   () => openEditor(test.id));
-    item.querySelector("[data-action='delete']").addEventListener("click", () => confirmDeleteTest(test.id));
-    item.querySelector("[data-action='clone']").addEventListener("click",  () => cloneTest(test));
-    item.querySelector("[data-action='export']").addEventListener("click", () => exportTestAsJson(test));
+    item.querySelector("[data-action='edit']").addEventListener("click",       () => openEditor(test.id));
+    item.querySelector("[data-action='delete']").addEventListener("click",     () => confirmDeleteTest(test.id));
+    item.querySelector("[data-action='clone']").addEventListener("click",      () => cloneTest(test));
+    item.querySelector("[data-action='export']").addEventListener("click",     () => exportTestAsJson(test));
+    item.querySelector("[data-action='toggle-vis']").addEventListener("click", () => toggleTestVisibility(test, item));
     testList.appendChild(item);
   });
 }
 
 document.getElementById("btn-new-test").addEventListener("click", () => openEditor(null));
+
+// ── Toggle test visibility ──────────────────────────────────────
+async function toggleTestVisibility(test, itemEl) {
+  const newVisible = test.visible === false;   // flip: false → true, anything else → false
+  try {
+    test.visible = newVisible;
+    await saveTest(test);   // saveTest with id does a setDoc merge (existing function)
+    // Update the card in-place without a full reload
+    itemEl.classList.toggle("test-hidden", !newVisible);
+    const label = itemEl.querySelector(".item-visibility-label");
+    const btn   = itemEl.querySelector("[data-action='toggle-vis']");
+    label.textContent = newVisible ? "Visible to students" : "Hidden from students";
+    btn.innerHTML     = newVisible ? "&#128065; Hide" : "&#128065; Show";
+    btn.title         = newVisible ? "Hide from students" : "Show to students";
+  } catch (err) {
+    alert("Could not update visibility: " + err.message);
+    test.visible = !newVisible; // revert on error
+  }
+}
 
 // ── Clone test ─────────────────────────────────────────────────
 async function cloneTest(test) {
@@ -961,9 +990,20 @@ function injectTypeFields(block, sec) {
   if (type === "diagram_completion") {
     extra.innerHTML = `
       <div class="form-group">
-        <label>Diagram Image Path (e.g. "images/diagram1.png")</label>
-        <input type="text" class="se-diagram-image" value="${escHtml(sec.diagramImage||"")}" />
-        <div class="form-hint">Leave blank to show placeholder.</div>
+        <label>Diagram Image</label>
+        <div class="diagram-upload-row">
+          <input type="text" class="se-diagram-image" value="${escHtml(sec.diagramImage||"")}" placeholder="Upload or paste a URL…" />
+          <label class="btn btn-ghost btn-sm diagram-upload-label" title="Upload image to Firebase Storage">
+            &#128190; Upload Image
+            <input type="file" class="se-diagram-file-input" accept="image/*" style="display:none;" />
+          </label>
+        </div>
+        <div class="se-diagram-upload-status form-hint" style="display:none;"></div>
+        <div class="form-hint">Upload an image or paste a URL. Leave blank to show placeholder.</div>
+        <div class="se-diagram-preview" style="margin-top:8px;display:none;">
+          <img class="se-diagram-preview-img" src="" alt="Diagram preview"
+               style="max-width:100%;max-height:180px;border:1.5px solid var(--border);border-radius:4px;" />
+        </div>
       </div>
       <div class="form-group">
         <label>Placeholder Note</label>
@@ -973,6 +1013,44 @@ function injectTypeFields(block, sec) {
         <label>Diagram Description</label>
         <input type="text" class="se-diagram-desc" value="${escHtml(sec.diagramDescription||"")}" />
       </div>`;
+
+    // Show preview if there's already an image URL
+    const imageInput  = extra.querySelector(".se-diagram-image");
+    const previewBox  = extra.querySelector(".se-diagram-preview");
+    const previewImg  = extra.querySelector(".se-diagram-preview-img");
+
+    function refreshPreview() {
+      const url = imageInput.value.trim();
+      if (url) { previewImg.src = url; previewBox.style.display = "block"; }
+      else      { previewBox.style.display = "none"; }
+    }
+    if (sec.diagramImage) refreshPreview();
+    imageInput.addEventListener("input", refreshPreview);
+
+    // File upload handler
+    extra.querySelector(".se-diagram-file-input").addEventListener("change", async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const statusEl = extra.querySelector(".se-diagram-upload-status");
+      statusEl.textContent = "Uploading…";
+      statusEl.style.display = "block";
+      statusEl.style.color   = "var(--text-muted)";
+      try {
+        const filename  = `diagrams/${Date.now()}-${file.name.replace(/[^a-z0-9._-]/gi, "_")}`;
+        const storageRef = ref(storage, filename);
+        await uploadBytes(storageRef, file);
+        const url = await getDownloadURL(storageRef);
+        imageInput.value = url;
+        refreshPreview();
+        statusEl.textContent = "Upload complete.";
+        statusEl.style.color = "#218838";
+        setTimeout(() => { statusEl.style.display = "none"; }, 3000);
+      } catch (err) {
+        statusEl.textContent = "Upload failed: " + err.message;
+        statusEl.style.color = "var(--accent)";
+      }
+      e.target.value = ""; // reset so same file can be re-selected
+    });
   }
   if (type === "true_false_ng") {
     extra.innerHTML = `

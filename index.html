@@ -69,7 +69,7 @@
   </div>
 
   <script type="module">
-    import { getAllTests, getConfig, seedIfEmpty } from "./js/db.js";
+    import { getVisibleTests, getConfig, seedIfEmpty } from "./js/db.js";
     import { SAMPLE_TEST } from "./js/sample-data.js";
 
     const grid          = document.getElementById("test-grid");
@@ -114,7 +114,7 @@
 
       // ── Step 3: load and render test cards ──────────────────────
       try {
-        const tests = await getAllTests();
+        const tests = await getVisibleTests();
         loading.classList.add("hidden");
 
         if (tests.length === 0) {
