@@ -7,7 +7,7 @@ import {
   getConfig, saveConfig,
   getAllResults, deleteResult
 } from "./db.js";
-import { storage, ref, uploadBytes, getDownloadURL } from "./firebase-config.js";
+
 
 // ── State ──────────────────────────────────────────────────────
 let currentTestData     = null;
@@ -991,15 +991,8 @@ function injectTypeFields(block, sec) {
     extra.innerHTML = `
       <div class="form-group">
         <label>Diagram Image</label>
-        <div class="diagram-upload-row">
-          <input type="text" class="se-diagram-image" value="${escHtml(sec.diagramImage||"")}" placeholder="Upload or paste a URL…" />
-          <label class="btn btn-ghost btn-sm diagram-upload-label" title="Upload image to Firebase Storage">
-            &#128190; Upload Image
-            <input type="file" class="se-diagram-file-input" accept="image/*" style="display:none;" />
-          </label>
-        </div>
-        <div class="se-diagram-upload-status form-hint" style="display:none;"></div>
-        <div class="form-hint">Upload an image or paste a URL. Leave blank to show placeholder.</div>
+        <input type="text" class="se-diagram-image" value="${escHtml(sec.diagramImage||"")}" placeholder="Paste an image URL or relative path e.g. images/diagram.png" />
+        <div class="form-hint">Paste a URL or a relative path (e.g. images/diagram.png). Place the file in the images/ folder and redeploy. Leave blank to show placeholder.</div>
         <div class="se-diagram-preview" style="margin-top:8px;display:none;">
           <img class="se-diagram-preview-img" src="" alt="Diagram preview"
                style="max-width:100%;max-height:180px;border:1.5px solid var(--border);border-radius:4px;" />
@@ -1026,31 +1019,6 @@ function injectTypeFields(block, sec) {
     }
     if (sec.diagramImage) refreshPreview();
     imageInput.addEventListener("input", refreshPreview);
-
-    // File upload handler
-    extra.querySelector(".se-diagram-file-input").addEventListener("change", async e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const statusEl = extra.querySelector(".se-diagram-upload-status");
-      statusEl.textContent = "Uploading…";
-      statusEl.style.display = "block";
-      statusEl.style.color   = "var(--text-muted)";
-      try {
-        const filename  = `diagrams/${Date.now()}-${file.name.replace(/[^a-z0-9._-]/gi, "_")}`;
-        const storageRef = ref(storage, filename);
-        await uploadBytes(storageRef, file);
-        const url = await getDownloadURL(storageRef);
-        imageInput.value = url;
-        refreshPreview();
-        statusEl.textContent = "Upload complete.";
-        statusEl.style.color = "#218838";
-        setTimeout(() => { statusEl.style.display = "none"; }, 3000);
-      } catch (err) {
-        statusEl.textContent = "Upload failed: " + err.message;
-        statusEl.style.color = "var(--accent)";
-      }
-      e.target.value = ""; // reset so same file can be re-selected
-    });
   }
   if (type === "true_false_ng") {
     extra.innerHTML = `

@@ -22,11 +22,7 @@ const firebaseConfig = {
 // Import Firebase modules (using CDN module syntax — no build tools needed)
 import { initializeApp }                        from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getFirestore, collection, doc, getDocs, getDoc, setDoc, deleteDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
-
-const app     = initializeApp(firebaseConfig);
-const db      = getFirestore(app);
-const storage = getStorage(app);
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
 
 export { db, collection, doc, getDocs, getDoc, setDoc, deleteDoc, addDoc };
-export { storage, ref, uploadBytes, getDownloadURL };
