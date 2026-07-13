@@ -171,9 +171,13 @@
           <div id="sections-editor"><!-- injected --></div>
           <button class="btn btn-ghost btn-sm" id="btn-add-section">+ Add Section</button>
 
-          <div style="display:flex;gap:12px;margin-top:32px;border-top:1.5px solid var(--border);padding-top:24px;">
+          <div style="display:flex;gap:12px;margin-top:32px;border-top:1.5px solid var(--border);padding-top:24px;flex-wrap:wrap;align-items:center;">
             <button class="btn btn-primary" id="btn-save-test">Save Test</button>
             <button class="btn btn-ghost"   id="btn-cancel-edit">Cancel</button>
+            <button class="btn btn-ghost hidden" id="btn-regrade"
+                    title="Re-calculate scores for all existing submissions of this test using the current answer keys (including alternatives)">
+              ↺ Re-grade Existing Results
+            </button>
             <button class="btn btn-danger"  id="btn-delete-test" style="margin-left:auto;">Delete Test</button>
           </div>
           <div id="save-msg" class="hidden" style="font-size:0.88rem;color:#218838;margin-top:10px;"></div>

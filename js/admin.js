@@ -5,7 +5,7 @@
 import {
   getAllTests, getTest, saveTest, deleteTest,
   getConfig, saveConfig,
-  getAllResults, deleteResult
+  getAllResults, deleteResult, updateResult, getResultsByTestId
 } from "./db.js";
 
 
@@ -530,6 +530,8 @@ async function openEditor(id) {
   renderSectionsEditor();
   document.getElementById("btn-delete-test").classList.toggle("hidden", !id);
   document.getElementById("save-msg").classList.add("hidden");
+  // Show re-grade button only when editing existing test (has id)
+  document.getElementById("btn-regrade").classList.toggle("hidden", !id);
 }
 
 document.getElementById("btn-back-to-list").addEventListener("click", backToList);
@@ -556,11 +558,106 @@ document.getElementById("btn-save-test").addEventListener("click", async () => {
     showMsg(msg, "Test saved successfully.");
     document.getElementById("btn-delete-test").classList.remove("hidden");
     document.getElementById("editor-heading").textContent = "Edit Test";
+    // Show re-grade button now that test has been saved
+    document.getElementById("btn-regrade").classList.remove("hidden");
   } catch (err) {
     console.error(err);
     showMsg(msg, "Error saving: " + err.message, true);
   }
 });
+
+// ── Re-grade existing results ──────────────────────────────────
+document.getElementById("btn-regrade").addEventListener("click", async () => {
+  if (!currentTestData?.id) return;
+  const msg = document.getElementById("save-msg");
+
+  const btn = document.getElementById("btn-regrade");
+  btn.disabled = true;
+  btn.textContent = "Re-grading…";
+
+  try {
+    const results = await getResultsByTestId(currentTestData.id);
+    if (results.length === 0) {
+      showMsg(msg, "No existing results found for this test.");
+      btn.disabled = false;
+      btn.textContent = "Re-grade Existing Results";
+      return;
+    }
+
+    // Build question map from current test data
+    const qMap = {};
+    (currentTestData.sections || []).forEach(sec => {
+      (sec.questions || []).forEach(q => { qMap[q.id] = q; });
+    });
+
+    let updatedCount = 0;
+
+    for (const result of results) {
+      let newScore = 0;
+      const newQuestionResults = (result.questionResults || []).map(qr => {
+        const q = qMap[qr.id];
+        if (!q) {
+          // Question no longer exists — keep as-is
+          if (qr.correct) newScore++;
+          return qr;
+        }
+        const userAnsNorm = (qr.given ?? "").toString().trim().toLowerCase();
+        const accepted = [q.answer, ...(q.alternatives || [])];
+        const isCorrect = accepted.some(a =>
+          (a ?? "").toString().trim().toLowerCase() === userAnsNorm
+        );
+        if (isCorrect) newScore++;
+        const allAccepted = (q.alternatives || []).length > 0
+          ? [q.answer, ...q.alternatives].join(" / ")
+          : (q.answer ?? "").toString();
+        return { ...qr, correct: isCorrect, expected: allAccepted };
+      });
+
+      const total = newQuestionResults.length || result.totalQuestions || 40;
+      const newBand = getBandScoreAdmin(newScore);
+
+      const updated = {
+        ...result,
+        score: newScore,
+        bandEstimate: newBand,
+        questionResults: newQuestionResults
+      };
+
+      await updateResult(result.id, updated);
+      updatedCount++;
+    }
+
+    showMsg(msg, `Re-graded ${updatedCount} result${updatedCount !== 1 ? "s" : ""} successfully.`);
+    // Refresh cache if results tab is loaded
+    allResultsCache = allResultsCache.map(r => {
+      const found = results.find(res => res.id === r.id);
+      return found ? { ...found } : r;
+    });
+  } catch (err) {
+    console.error(err);
+    showMsg(msg, "Re-grade failed: " + err.message, true);
+  }
+
+  btn.disabled = false;
+  btn.textContent = "Re-grade Existing Results";
+});
+
+function getBandScoreAdmin(correct) {
+  if (correct >= 39) return 9.0;
+  if (correct >= 37) return 8.5;
+  if (correct >= 35) return 8.0;
+  if (correct >= 33) return 7.5;
+  if (correct >= 30) return 7.0;
+  if (correct >= 27) return 6.5;
+  if (correct >= 23) return 6.0;
+  if (correct >= 19) return 5.5;
+  if (correct >= 15) return 5.0;
+  if (correct >= 13) return 4.5;
+  if (correct >= 10) return 4.0;
+  if (correct >= 8)  return 3.5;
+  if (correct >= 6)  return 3.0;
+  return 2.5;
+}
 
 // ── Results dashboard ──────────────────────────────────────────
 async function loadResultsDashboard() {
@@ -1068,6 +1165,16 @@ function buildQuestionBlock(q, type) {
       </div>`;
   }
 
+  // Alternatives field for all types (optional additional accepted answers)
+  const altsValue = (q.alternatives || []).join(", ");
+  extraFields += `
+    <div class="form-group">
+      <label>Alternative Accepted Answers <span style="font-weight:400;color:var(--text-muted);">(optional)</span></label>
+      <input type="text" class="qe-alternatives" value="${escHtml(altsValue)}"
+             placeholder="e.g. muscle paralysis, atonia (comma-separated)" />
+      <div class="form-hint">Additional answers accepted as correct. Separate with commas.</div>
+    </div>`;
+
   block.innerHTML = `
     <summary>Q${q.id}: ${escHtml((q.stem||"").slice(0,60))}${(q.stem||"").length>60?"…":""}</summary>
     <div class="q-editor-inner">
@@ -1153,7 +1260,10 @@ function collectFormData() {
       const qid  = parseInt(qblock.querySelector(".qe-id")?.value) || 0;
       const stem = qblock.querySelector(".qe-stem")?.value.trim() || "";
       const ans  = qblock.querySelector(".qe-answer")?.value.trim() || "";
+      const altsRaw = qblock.querySelector(".qe-alternatives")?.value || "";
+      const alternatives = altsRaw.split(",").map(a => a.trim()).filter(Boolean);
       const q    = { id: qid, stem, answer: ans };
+      if (alternatives.length > 0) q.alternatives = alternatives;
       if (type === "multiple_choice") {
         q.options = [];
         qblock.querySelectorAll(".option-editor-row").forEach(row => {

@@ -119,6 +119,9 @@ a:hover { text-decoration: underline; }
 #sim-topbar .tb-title  { flex: 1; font-size: 0.9rem; color: #cce0ff; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #sim-topbar .tb-right  { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 
+.timer-wrapper {
+  display: flex; align-items: center; gap: 4px;
+}
 #timer-display {
   font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums;
   background: rgba(255,255,255,0.12); padding: 4px 12px; border-radius: 4px;
@@ -126,6 +129,16 @@ a:hover { text-decoration: underline; }
 }
 #timer-display.warn { background: var(--timer-warn); animation: pulse 1s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+/* Timer toggle button */
+.timer-toggle-btn {
+  background: none; border: none; cursor: pointer;
+  color: rgba(255,255,255,0.7); font-size: 1rem; padding: 2px 5px;
+  line-height: 1; border-radius: 3px; transition: color 0.15s, background 0.15s;
+}
+.timer-toggle-btn:hover { color: #fff; background: rgba(255,255,255,0.12); }
+/* Dimmed state when timer is hidden */
+.timer-toggle-btn.timer-hidden-state { color: rgba(255,255,255,0.35); }
 
 /* ── PASSAGE NAV BAR ─────────────────────────────────────── */
 #passage-nav {

@@ -60,6 +60,18 @@ export async function deleteResult(id) {
   await deleteDoc(doc(db, RESULTS_COLLECTION, id));
 }
 
+export async function updateResult(id, data) {
+  const { id: _id, ...cleanData } = data;
+  await setDoc(doc(db, RESULTS_COLLECTION, id), cleanData);
+}
+
+export async function getResultsByTestId(testId) {
+  const snapshot = await getDocs(collection(db, RESULTS_COLLECTION));
+  return snapshot.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(r => r.testId === testId);
+}
+
 // ── Config (admin password, class list etc.) ───────────────────
 export async function getConfig() {
   const snap = await getDoc(doc(db, CONFIG_COLLECTION, CONFIG_DOC_ID));

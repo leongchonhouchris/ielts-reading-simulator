@@ -9,11 +9,11 @@ let TEST         = null;   // full test object from Firestore
 let currentPassageIdx = 0; // which passage tab is active
 let answers      = {};     // { questionId: value }
 let flagged      = new Set();
-let highlights   = {};     // { passageId: [ {startOffset, endOffset, paraIdx, color, noteId} ] }
-let notes        = {};     // { noteId: "text" }
+let highlights   = {};     // { passageId: [ {id, color, start, end, note} ] }
 let timerSeconds    = 0;
 let timerSecondsMax = 0;   // total seconds at start, for time-taken calculation
 let timerInterval = null;
+let timerVisible  = true;  // Feature 2: timer show/hide
 let reviewOpen   = false;
 let resultSaved  = false;  // prevent double-save
 
@@ -25,6 +25,7 @@ let pendingNoteHighlightId = null;
 const loading           = document.getElementById("loading");
 const tbTitle           = document.getElementById("tb-test-title");
 const timerDisplay      = document.getElementById("timer-display");
+const timerToggleBtn    = document.getElementById("timer-toggle");
 const passageNav        = document.getElementById("passage-nav");
 const passagePane       = document.getElementById("passage-pane");
 const questionPane      = document.getElementById("question-pane");
@@ -85,6 +86,10 @@ function startTimer() {
 }
 
 function updateTimerDisplay() {
+  if (!timerVisible) {
+    timerDisplay.textContent = "--:--";
+    return;
+  }
   const m = Math.floor(Math.abs(timerSeconds) / 60).toString().padStart(2, "0");
   const s = (Math.abs(timerSeconds) % 60).toString().padStart(2, "0");
   timerDisplay.textContent = `${m}:${s}`;
@@ -95,6 +100,20 @@ function autoSubmit() {
   submitConfirm.textContent = "View Results";
   submitModalOverlay.classList.remove("hidden");
 }
+
+// ── Timer toggle (Feature 2) ───────────────────────────────────
+timerToggleBtn.addEventListener("click", () => {
+  timerVisible = !timerVisible;
+  timerToggleBtn.title     = timerVisible ? "Hide timer" : "Show timer";
+  timerToggleBtn.setAttribute("aria-label", timerVisible ? "Hide timer" : "Show timer");
+  timerToggleBtn.classList.toggle("timer-hidden-state", !timerVisible);
+  // Force display refresh — also removes .warn class while hidden so colours don't bleed
+  if (!timerVisible) {
+    timerDisplay.textContent = "--:--";
+  } else {
+    updateTimerDisplay();
+  }
+});
 
 // ── Passage tabs ───────────────────────────────────────────────
 function buildPassageTabs() {
@@ -497,7 +516,8 @@ function jumpToQuestion(qid) {
   }, 100);
 }
 
-// ── Highlight logic ────────────────────────────────────────────
+// ── Highlight logic (Feature 3: persists across passage switches) ──
+
 passagePane.addEventListener("mouseup", onPassageMouseUp);
 
 function onPassageMouseUp(e) {
@@ -505,7 +525,6 @@ function onPassageMouseUp(e) {
   if (!sel || sel.isCollapsed) { hideHlToolbar(); return; }
   const range = sel.getRangeAt(0);
   if (!passagePane.contains(range.commonAncestorContainer)) { hideHlToolbar(); return; }
-
   pendingRange = range.cloneRange();
   showHlToolbar(e.clientX, e.clientY);
 }
@@ -539,65 +558,182 @@ hlToolbar.querySelectorAll("[data-color]").forEach(btn => {
 // Note button
 hlAddNote.addEventListener("click", () => {
   if (!pendingRange) return;
-  // Save range, open note modal
   pendingNoteHighlightId = applyHighlight(pendingRange, "yellow");
   window.getSelection()?.removeAllRanges();
   hideHlToolbar();
-  noteTextInput.value = notes[pendingNoteHighlightId] || "";
+  // Pre-fill with any existing note for this highlight
+  const passageId = TEST.passages[currentPassageIdx]?.id;
+  const existing = (highlights[passageId] || []).find(h => h.id === pendingNoteHighlightId);
+  noteTextInput.value = existing?.note || "";
   noteModalOverlay.classList.remove("hidden");
   noteTextInput.focus();
 });
 
+// ── Offset helpers ─────────────────────────────────────────────
+// Convert a DOM Range to character offsets within passagePane's text content.
+function domRangeToTextOffsets(range, container) {
+  let start = 0, end = 0, counted = 0, startFound = false;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  let node;
+  while ((node = walker.nextNode())) {
+    const len = node.nodeValue.length;
+    if (!startFound) {
+      if (node === range.startContainer) {
+        start = counted + range.startOffset;
+        startFound = true;
+      } else if (range.startContainer.nodeType !== Node.TEXT_NODE &&
+                 range.startContainer.contains && range.startContainer.contains(node)) {
+        start = counted;
+        startFound = true;
+      }
+    }
+    if (startFound) {
+      if (node === range.endContainer) {
+        end = counted + range.endOffset;
+        break;
+      } else if (range.endContainer.nodeType !== Node.TEXT_NODE &&
+                 range.endContainer.contains && range.endContainer.contains(node)) {
+        end = counted + len;
+        break;
+      }
+    }
+    counted += len;
+  }
+  if (!startFound) { start = 0; end = 0; }
+  return { start, end };
+}
+
+// Convert character offsets back to a DOM Range within container.
+function textOffsetsToRange(start, end, container) {
+  const range = document.createRange();
+  let counted = 0, startSet = false;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  let node;
+  while ((node = walker.nextNode())) {
+    const len = node.nodeValue.length;
+    if (!startSet && counted + len >= start) {
+      range.setStart(node, start - counted);
+      startSet = true;
+    }
+    if (startSet && counted + len >= end) {
+      range.setEnd(node, end - counted);
+      return range;
+    }
+    counted += len;
+  }
+  return null; // offsets out of range (passage text changed)
+}
+
+// ── Apply highlight to DOM ─────────────────────────────────────
 function applyHighlight(range, color) {
   const id = "hl-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+
+  // Store text offsets BEFORE modifying the DOM
+  const offsets = domRangeToTextOffsets(range, passagePane);
+
   try {
     const span = document.createElement("span");
     span.className = `hl-${color}`;
     span.dataset.hlId = id;
-    span.dataset.hlColor = color;
     range.surroundContents(span);
   } catch {
-    // Range spans multiple elements — wrap with mark tag
     const frag = range.extractContents();
     const span = document.createElement("span");
     span.className = `hl-${color}`;
     span.dataset.hlId = id;
-    span.dataset.hlColor = color;
     span.appendChild(frag);
     range.insertNode(span);
   }
 
-  // Save highlight data
+  // Save highlight record (with offsets) so it survives passage switches
   const passageId = TEST.passages[currentPassageIdx]?.id;
   if (!highlights[passageId]) highlights[passageId] = [];
-  highlights[passageId].push({ id, color });
+  highlights[passageId].push({ id, color, start: offsets.start, end: offsets.end, note: "" });
 
-  // Allow clicking highlight to edit note
+  // Attach click listener to the freshly inserted span
   const hlEl = passagePane.querySelector(`[data-hl-id="${id}"]`);
-  if (hlEl) hlEl.addEventListener("click", () => onHighlightClick(id));
+  if (hlEl) attachHighlightClickListener(hlEl, id);
 
   return id;
 }
 
+function attachHighlightClickListener(hlEl, id) {
+  hlEl.addEventListener("click", () => onHighlightClick(id));
+}
+
 function removeHighlightAtRange(range) {
-  // Find any highlight span covering the selection
-  const container = range.commonAncestorContainer.parentElement;
-  const hlSpan = container.closest ? container.closest("[data-hl-id]") : null;
+  const container = range.commonAncestorContainer;
+  const node = container.nodeType === Node.TEXT_NODE ? container.parentElement : container;
+  const hlSpan = node.closest ? node.closest("[data-hl-id]") : null;
   if (hlSpan) {
+    const hlId = hlSpan.dataset.hlId;
     const parent = hlSpan.parentNode;
     while (hlSpan.firstChild) parent.insertBefore(hlSpan.firstChild, hlSpan);
     parent.removeChild(hlSpan);
+    // Remove from stored highlights
+    const passageId = TEST.passages[currentPassageIdx]?.id;
+    if (highlights[passageId]) {
+      highlights[passageId] = highlights[passageId].filter(h => h.id !== hlId);
+    }
   }
 }
 
+// Re-apply all stored highlights for a passage after it is re-rendered.
 function applyHighlightsToDOM(passageId) {
-  // Highlights are already in the DOM from this session — nothing to re-apply
-  // (In a production version you would serialise/deserialise using TreeWalker offsets)
+  const list = highlights[passageId];
+  if (!list || list.length === 0) return;
+
+  for (const hl of list) {
+    const range = textOffsetsToRange(hl.start, hl.end, passagePane);
+    if (!range) continue; // offsets invalid (shouldn't happen in session)
+
+    // Check range is not empty / collapsed
+    if (range.collapsed) continue;
+
+    try {
+      const span = document.createElement("span");
+      span.className = `hl-${hl.color}`;
+      span.dataset.hlId = hl.id;
+      try {
+        range.surroundContents(span);
+      } catch {
+        const frag = range.extractContents();
+        span.appendChild(frag);
+        range.insertNode(span);
+      }
+
+      // Re-attach note marker if this highlight has a note
+      if (hl.note) {
+        attachNoteMarker(span, hl.id, hl.note);
+      }
+
+      attachHighlightClickListener(span, hl.id);
+    } catch (err) {
+      // Silently skip if re-application fails for any reason
+    }
+  }
+}
+
+function attachNoteMarker(hlEl, hlId, text) {
+  // Remove any stale marker first
+  hlEl.querySelector(".note-marker")?.remove();
+  const marker = document.createElement("span");
+  marker.className = "note-marker";
+  marker.title = text;
+  marker.dataset.noteId = hlId;
+  marker.setAttribute("aria-label", "Note: " + text);
+  marker.addEventListener("click", e => {
+    e.stopPropagation();
+    showNoteTooltip(marker, text, hlId);
+  });
+  hlEl.appendChild(marker);
 }
 
 function onHighlightClick(hlId) {
   pendingNoteHighlightId = hlId;
-  noteTextInput.value = notes[hlId] || "";
+  const passageId = TEST.passages[currentPassageIdx]?.id;
+  const hl = (highlights[passageId] || []).find(h => h.id === hlId);
+  noteTextInput.value = hl?.note || "";
   noteModalOverlay.classList.remove("hidden");
   noteTextInput.focus();
 }
@@ -611,27 +747,17 @@ noteCancel.addEventListener("click", () => {
 noteSave.addEventListener("click", () => {
   if (pendingNoteHighlightId) {
     const text = noteTextInput.value.trim();
-    notes[pendingNoteHighlightId] = text;
 
-    // Attach/update note marker on highlight span
+    // Update note in the stored highlights record
+    const passageId = TEST.passages[currentPassageIdx]?.id;
+    const hl = (highlights[passageId] || []).find(h => h.id === pendingNoteHighlightId);
+    if (hl) hl.note = text;
+
+    // Update the DOM marker on the current passage
     const hlEl = passagePane.querySelector(`[data-hl-id="${pendingNoteHighlightId}"]`);
     if (hlEl) {
-      // Remove existing marker if any
-      const existing = hlEl.querySelector(".note-marker");
-      if (existing) existing.remove();
-
-      if (text) {
-        const marker = document.createElement("span");
-        marker.className = "note-marker";
-        marker.title = text;
-        marker.dataset.noteId = pendingNoteHighlightId;
-        marker.setAttribute("aria-label", "Note: " + text);
-        marker.addEventListener("click", e => {
-          e.stopPropagation();
-          showNoteTooltip(marker, text, pendingNoteHighlightId);
-        });
-        hlEl.appendChild(marker);
-      }
+      hlEl.querySelector(".note-marker")?.remove();
+      if (text) attachNoteMarker(hlEl, pendingNoteHighlightId, text);
     }
   }
   noteModalOverlay.classList.add("hidden");
@@ -653,7 +779,9 @@ function showNoteTooltip(marker, text, hlId) {
   tooltip.querySelector(".note-edit").addEventListener("click", () => {
     tooltip.remove();
     pendingNoteHighlightId = hlId;
-    noteTextInput.value = notes[hlId] || "";
+    const passageId = TEST.passages[currentPassageIdx]?.id;
+    const hl = (highlights[passageId] || []).find(h => h.id === hlId);
+    noteTextInput.value = hl?.note || "";
     noteModalOverlay.classList.remove("hidden");
     noteTextInput.focus();
   });
@@ -700,6 +828,20 @@ submitConfirm.addEventListener("click", () => {
   showResults();
 });
 
+// ── Answer checking helpers (Feature 1) ───────────────────────
+function isAnswerCorrect(userAnsNormalized, question) {
+  const accepted = [question.answer, ...(question.alternatives || [])];
+  return accepted.some(a =>
+    (a ?? "").toString().trim().toLowerCase() === userAnsNormalized
+  );
+}
+
+function buildAcceptedList(question) {
+  const alts = (question.alternatives || []).filter(Boolean);
+  if (alts.length === 0) return (question.answer ?? "").toString();
+  return [question.answer, ...alts].join(" / ");
+}
+
 // ── Question-type label map (mirrors netlify function) ─────────
 const TYPE_LABELS = {
   multiple_choice:      "Multiple Choice",
@@ -743,17 +885,19 @@ function showResults() {
   const questionResults = [];
 
   allQs.forEach(q => {
-    const userAns    = (answers[q.id] ?? "").toString().trim().toLowerCase();
-    const correctAns = (q.answer ?? "").toString().trim().toLowerCase();
-    const isCorrect  = userAns === correctAns;
+    const userAns   = (answers[q.id] ?? "").toString().trim().toLowerCase();
+    const isCorrect = isAnswerCorrect(userAns, q);
     if (isCorrect) correct++;
+
+    // Build display string for accepted answers (primary + alternatives)
+    const allAccepted = buildAcceptedList(q);
 
     questionResults.push({
       id:       q.id,
       stem:     q.stem || "",
       correct:  isCorrect,
       given:    answers[q.id] ?? "",
-      expected: q.answer ?? ""
+      expected: allAccepted
     });
 
     const tr = document.createElement("tr");
@@ -761,7 +905,7 @@ function showResults() {
       <td>${q.id}</td>
       <td style="max-width:280px;">${escHtml(q.stem || "")}</td>
       <td class="${isCorrect ? "your-answer-correct" : "your-answer-wrong"}">${escHtml(answers[q.id] ?? "—")}</td>
-      <td>${escHtml(q.answer ?? "")}</td>
+      <td>${escHtml(allAccepted)}</td>
       <td>${isCorrect
         ? '<span class="correct-mark">✓ Correct</span>'
         : '<span class="incorrect-mark">✗ Incorrect</span>'
